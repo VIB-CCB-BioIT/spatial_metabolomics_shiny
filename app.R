@@ -195,13 +195,19 @@ server = function(input, output, session) {
     }) |> rbindlist()
 
     dt = data$raw[data$metabolites[, .(`m/z`, Name)], on = "m/z", roll = "nearest"]
+    print("Merged raw data with Metabolites")
+    data$raw = NULL
+    gc()
+
     dt_m = data.table::melt(dt, id.vars = c("m/z", "Name"), variable.name = "Spot index")
+    rm(dt)
+    gc()
     dt_m[, `Spot index` := as.integer(gsub("Spot ", "", `Spot index`))]
 
     data$combined_dt = merge(dt_m, data$annotation, by = "Spot index")
-
+    print("Merged data with annotation")
     # Free up memory
-    rm(dt, dt_m, data$raw)
+    rm(dt_m)
     gc()
 
     # First check if all metabolites are present in pathway file
@@ -239,6 +245,7 @@ server = function(input, output, session) {
     data$combined_dt_median_all[, Name := factor(Name, levels = unique(Name))]
     data$combined_dt_median_all[, annot_1 := factor(annot_1, levels = unique(annot_1))]
     data$combined_dt_median_all[, annot_2 := factor(annot_2, levels = unique(annot_2))]
+    print("Combined_dt_median_all finished")
 
     # Load MSI images
     data$msi_images_dt = lapply(1:nrow(input$msi_images), function(i) {
