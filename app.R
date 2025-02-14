@@ -201,7 +201,7 @@ server = function(input, output, session) {
     data$combined_dt = merge(dt_m, data$annotation, by = "Spot index")
 
     # Free up memory
-    rm(dt, dt_m)
+    rm(dt, dt_m, data$raw)
     gc()
 
     # First check if all metabolites are present in pathway file
