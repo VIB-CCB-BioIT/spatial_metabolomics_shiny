@@ -182,7 +182,7 @@ server = function(input, output, session) {
     #data$metabolites = fread(paste0(basedir, "/Final list 2025.csv"))
     #data$pathways = fread(paste0(basedir, "/List of metabolites per pathway-simplified.csv"))
     #annots = list.files(paste0(basedir, "/Annotation/"), full.names = TRUE)
-    #msi_paths = list.files(basedir, pattern = ".png")
+    #msi_paths = list.files(basedir, pattern = ".png", recursive = TRUE)
     #input = list()
     #input$annotation_files = data.frame(datapath = annots, name = basename(annots))
     #input$msi_images = data.frame(datapath = msi_paths, name = basename(msi_paths))
@@ -210,6 +210,9 @@ server = function(input, output, session) {
     rm(dt_m)
     gc()
 
+    # Remove unneeded columns
+    data$combined_dt[, c("m/z", "x", "y") := NULL]
+
     # First check if all metabolites are present in pathway file
     if (any(!data$metabolites$Name %in% data$pathways$`Scils - Name`)) {
       showNotification(paste0("Not all metabolites are present in the pathway annotation file!\nThe following metabolites are missing: ",
@@ -217,15 +220,22 @@ server = function(input, output, session) {
       shinyjs::hide("loading_spinner")
       return()
     }
-
-    data$combined_dt = merge(data$combined_dt, data$pathways, by.x = "Name", by.y = "Scils - Name", allow.cartesian = TRUE)
-
+    print("pre merge")
+    data$combined_dt = merge(data$combined_dt, data$pathways[, .(Pathway, `Scils - Name`)], by.x = "Name", by.y = "Scils - Name", allow.cartesian = TRUE)
+    print("post_merge")
     setorder(data$combined_dt, annot_1, annot_2)
-    data$combined_dt[, annot_1 := factor(annot_1, levels = unique(annot_1))]
-    data$combined_dt[, annot_2 := factor(annot_2, levels = unique(annot_2))]
 
+
+    print("post setorder")
+    setattr(data$combined_dt$annot_1, "levels", unique(data$combined_dt$annot_1))
+    setattr(data$combined_dt$annot_2, "levels", unique(data$combined_dt$annot_2))
+
+    print("post factor datat.table")
+    levels(data$combined_dt$annot_1)
     # Process heatmap data
     data$combined_dt[, z_score := scale(value), by = Name]
+
+    print("Combined_dt finished")
 
     # Pathway specific
     data$combined_dt_median = data$combined_dt[, .(median_zscore = median(z_score)),
@@ -235,6 +245,8 @@ server = function(input, output, session) {
     data$combined_dt_median[, Name := factor(Name, levels = unique(Name))]
     data$combined_dt_median[, annot_1 := factor(annot_1, levels = unique(annot_1))]
     data$combined_dt_median[, annot_2 := factor(annot_2, levels = unique(annot_2))]
+
+    print("Combined_dt_median finished")
 
     # All metabolites
     data$combined_dt_nodups = unique(data$combined_dt, by = c("Name", "Spot index", "annot_1", "annot_2", "z_score"))
@@ -248,7 +260,7 @@ server = function(input, output, session) {
     print("Combined_dt_median_all finished")
 
     # Load MSI images
-    data$msi_images_dt = lapply(1:nrow(input$msi_images), function(i) {
+    data$msi_images_dt = lapply(seq_len(nrow(input$msi_images)), function(i) {
       mz_value = as.numeric(sub(" .*", "", input$msi_images$name[i]))
       data.table(name = input$msi_images$name[i], "m/z" = mz_value, imagepath = input$msi_images$datapath[i])
     }) |> rbindlist()
@@ -332,7 +344,7 @@ server = function(input, output, session) {
 
       # Calculate distance if more than 2 metabolites
       heatmap_dt = data$combined_dt_median[Pathway == pathway]
-      if ( nrow(unique(heatmap_dt, by = "Name")) > 2 ) {
+      if (nrow(unique(heatmap_dt, by = "Name")) > 2 ) {
         dist_mat = unique(heatmap_dt, by = c("Name", "annot_1", "annot_2"))
         dist_mat = as.data.frame(dcast(dist_mat, Name ~ annot_1 + annot_2, value.var = "median_zscore"))
         rownames(dist_mat) = dist_mat$Name
